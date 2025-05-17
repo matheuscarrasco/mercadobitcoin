@@ -1,0 +1,64 @@
+from fastapi import APIRouter, HTTPException
+from mysql.connector import Error
+from pydantic import BaseModel
+from typing import  Optional
+from models.database import Database
+
+router = APIRouter()
+
+ALLOWED_TABLES = {"btc", "eth", "xrp", "bnb", "sol", "usdc", "doge", "ada", "trx"}
+
+class TickerModel(BaseModel):
+    high: Optional[float]
+    low: Optional[float]
+    vol: Optional[float]
+    last: Optional[float]
+    buy: Optional[float]
+    sell: Optional[float]
+    date: int  # Obrigatório para identificar qual registro atualizar
+
+# PUT - Atualizar dados parcial ou total de um ticker
+def generate_ticker_put_route(table_name: str):
+    route_path = f"/{table_name}/ticker"
+
+    @router.put(route_path)
+    def put_ticker(data: TickerModel):
+        db = Database()
+        db.conectar()
+        try:
+            if table_name not in ALLOWED_TABLES:
+                raise HTTPException(status_code=400, detail="Moeda inválida")
+
+            # Montar dinamicamente os campos que serão atualizados
+            fields_to_update = []
+            values = []
+
+            for field in ["high", "low", "vol", "last", "buy", "sell"]:
+                value = getattr(data, field)
+                if value is not None:
+                    fields_to_update.append(f"{field} = %s")
+                    values.append(value)
+
+            if not fields_to_update:
+                raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
+
+            update_fields = ", ".join(fields_to_update)
+            values.append(data.date)  # WHERE date = ?
+
+            sql = f"""
+                UPDATE {table_name}
+                SET {update_fields}
+                WHERE date = %s
+            """
+
+            rows_affected = db.executar(sql, tuple(values))
+            if rows_affected == 0:
+                raise HTTPException(status_code=404, detail="Registro não encontrado para atualizar")
+            return {"message": f"Ticker de {table_name} atualizado com sucesso."}
+        except Error as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao atualizar dados: {e}")
+        finally:
+            db.desconectar()
+
+for symbol in ALLOWED_TABLES:
+    generate_ticker_put_route(symbol)

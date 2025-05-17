@@ -1,0 +1,41 @@
+from fastapi import APIRouter, HTTPException
+from mysql.connector import Error
+from pydantic import BaseModel
+from models.database import Database
+from typing import List
+
+router = APIRouter()
+
+# Modelo base (pode ser usado para BTC, ETH, etc.)
+class TickerModel(BaseModel):
+    high: float
+    low: float
+    vol: float
+    last: float
+    buy: float
+    sell: float
+    date: int
+
+# Função genérica para criar uma rota GET para qualquer tabela
+def generate_ticker_route(table_name: str):
+    route_path = f"/{table_name}/ticker"
+
+    @router.get(route_path, response_model=List[TickerModel])
+    def get_ticker():
+        """Retorna o ticker da moeda"""
+        db = Database()
+        db.conectar()
+        try:
+            sql = f"SELECT high, low, vol, last, buy, sell, date FROM {table_name}"
+            result = db.consultar(sql)
+            if result is None:
+                raise HTTPException(status_code=500, detail="Erro ao consultar o banco de dados")
+            return result
+        except Error as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao consultar o banco de dados: {e}")
+        finally:
+            db.desconectar()
+
+# Gerar rotas automaticamente para múltiplas tabelas
+for symbol in ["btc", "eth", "xrp", "bnb", "sol", "usdc", "doge", "ada", "trx"]:
+    generate_ticker_route(symbol)

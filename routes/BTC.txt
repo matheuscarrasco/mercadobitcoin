@@ -1,0 +1,32 @@
+from fastapi import APIRouter, Form, HTTPException
+from mysql.connector import Error
+from pydantic import BaseModel
+from models.database import Database
+
+router = APIRouter(prefix="/BTC")
+
+class BTCModel(BaseModel):
+    high: float
+    low: float
+    vol: float
+    last: float
+    buy: float
+    sell: float
+    date: int
+
+
+@router.get("/ticker")
+def ticker_BTC():
+    """Retorna o ticker do BTC"""
+    db = Database()
+    db.conectar()
+    try:
+        sql = "SELECT * FROM BTC"
+        result = db.consultar(sql)
+        if result is None:
+            raise HTTPException(status_code=500, detail="Erro ao consultar o banco de dados")
+        return result
+    except Error as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao consultar o banco de dados: {e}")
+    finally:
+        db.desconectar()

@@ -1,0 +1,60 @@
+from fastapi import APIRouter, HTTPException
+from mysql.connector import Error
+from pydantic import BaseModel
+from models.database import Database
+
+router = APIRouter()
+
+# Modelo reutilizável para qualquer moeda
+class TickerModel(BaseModel):
+    high: float
+    low: float
+    vol: float
+    last: float
+    buy: float
+    sell: float
+    date: int
+
+# Lista segura de moedas permitidas (nome das tabelas)
+ALLOWED_TABLES = {"btc", "eth", "xrp", "bnb", "sol", "usdc", "doge", "ada", "trx"}
+
+# POST - Inserir ou atualizar dados
+def generate_ticker_post_route(table_name: str):
+    route_path = f"/{table_name}/ticker"
+
+    @router.post(route_path)
+    def post_ticker(data: TickerModel):
+        db = Database()
+        db.conectar()
+        try:
+            if table_name not in ALLOWED_TABLES:
+                raise HTTPException(status_code=400, detail="Moeda inválida")
+
+            sql = f"""
+                INSERT INTO {table_name} (high, low, vol, last, buy, sell, date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    high = VALUES(high),
+                    low = VALUES(low),
+                    vol = VALUES(vol),
+                    last = VALUES(last),
+                    buy = VALUES(buy),
+                    sell = VALUES(sell)
+            """
+
+            values = (
+                data.high, data.low, data.vol,
+                data.last, data.buy, data.sell,
+                data.date
+            )
+
+            db.executar(sql, values)
+            return {"message": f"Ticker de {table_name} inserido/atualizado com sucesso."}
+        except Error as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao inserir dados: {e}")
+        finally:
+            db.desconectar()
+
+# Criar rotas para todas as moedas permitidas
+for symbol in ALLOWED_TABLES:
+    generate_ticker_post_route(symbol)
